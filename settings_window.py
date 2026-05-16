@@ -11,6 +11,7 @@ from PIL import ImageTk
 from tkinter import filedialog, messagebox, ttk
 
 import app_logs
+import app_version
 import auth
 import config
 import hotkey_listener
@@ -139,6 +140,7 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
     tab_session_log = ttk.Frame(notebook)
     tab_library = ttk.Frame(notebook)
     tab_twitch_clips = ttk.Frame(notebook)
+    tab_about = ttk.Frame(notebook)
     notebook.add(tab_auth, text=f"  {_t('tab_auth')}  ")
     notebook.add(tab_clip, text=f"  {_t('tab_clip')}  ")
     notebook.add(tab_notify, text=f"  {_t('tab_notify')}  ")
@@ -146,6 +148,53 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
     notebook.add(tab_twitch_clips, text=f"  {_t('tab_twitch_clips')}  ")
     notebook.add(tab_session_log, text=f"  {_t('tab_session_log')}  ")
     notebook.add(tab_import_export, text=f"  {_t('tab_import_export')}  ")
+    notebook.add(tab_about, text=f"  {_t('tab_about')}  ")
+
+    # ── About tab ───────────────────────────────────────────────────────────
+    tk.Label(
+        tab_about,
+        text=_t("about_desc"),
+        fg="gray",
+        anchor="w",
+        justify="left",
+    ).grid(row=0, column=0, columnspan=3, sticky="w", padx=10, pady=(10, 6))
+
+    tk.Label(tab_about, text=_t("about_version"), anchor="w", width=label_w).grid(
+        row=1, column=0, sticky="w", **pad
+    )
+    tk.Label(tab_about, text=app_version.APP_VERSION, anchor="w").grid(
+        row=1, column=1, sticky="w", **pad
+    )
+
+    tk.Label(tab_about, text=_t("about_build_date"), anchor="w", width=label_w).grid(
+        row=2, column=0, sticky="w", **pad
+    )
+    tk.Label(tab_about, text=app_version.APP_BUILD_DATE, anchor="w").grid(
+        row=2, column=1, sticky="w", **pad
+    )
+
+    tk.Label(tab_about, text=_t("about_repository"), anchor="w", width=label_w).grid(
+        row=3, column=0, sticky="w", **pad
+    )
+    repo_link = tk.Label(
+        tab_about,
+        text=app_version.APP_REPO_URL,
+        fg="#1a73e8",
+        cursor="hand2",
+        anchor="w",
+    )
+    repo_link.grid(row=3, column=1, sticky="w", **pad)
+    repo_link.bind("<Button-1>", lambda _e: webbrowser.open_new(app_version.APP_REPO_URL))
+
+    def _copy_repo_url():
+        win.clipboard_clear()
+        win.clipboard_append(app_version.APP_REPO_URL)
+        messagebox.showinfo(_t("copied"), _t("copied_repo_url"), parent=win)
+
+    tk.Button(tab_about, text=_t("copy"), command=_copy_repo_url, width=8).grid(
+        row=3, column=2, sticky="w", padx=4, pady=4
+    )
+    tab_about.columnconfigure(1, weight=1)
 
     # ── Notifications tab ───────────────────────────────────────────────────
     tk.Label(

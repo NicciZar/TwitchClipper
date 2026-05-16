@@ -11,6 +11,8 @@ A Python-based Twitch clip downloader with hotkey support, featuring a system tr
 - **Twitch API Integration**: Fetch game names and clip metadata from Twitch Helix API
 - **Multi-language Support**: English and German translations included
 - **Session Logging**: Detailed logs of all actions and API interactions
+- **Build Metadata in UI**: Version, build date, and repository link in a dedicated About tab
+- **Release Automation**: Semantic versioning, EXE metadata stamping, and GitHub Release upload
 
 ## Prerequisites
 
@@ -59,6 +61,32 @@ The settings window provides:
   - Download clips directly
   - Set custom broadcaster/game organization
 - **Session Log Tab**: View real-time logs of all operations
+- **About Tab**: View app version, build date, and repository URL
+
+## Release Process
+
+Automated release flow is available via:
+
+```bash
+release.bat
+```
+
+What it does:
+- Computes next semantic version from commits since last `vX.Y.Z` tag
+- Uses standard bump rules:
+  - `major`: commit contains `BREAKING CHANGE` or `type!:`
+  - `minor`: at least one `feat` commit
+  - `patch`: all other commits
+- Writes a changelog entry to `CHANGELOG.md` with bump type and included commits
+- Generates release notes summary and publishes it with the GitHub Release
+- Generates build metadata (`app_version.py`) and PyInstaller version resource
+- Builds `dist/TwitchClipper.exe`
+- Creates and pushes a git tag
+- Creates a GitHub Release and uploads the EXE
+
+Requirements:
+- GitHub CLI (`gh`) installed and authenticated
+- Clean working tree before running `release.bat`
 
 ## Configuration
 

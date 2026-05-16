@@ -5,6 +5,7 @@ import ctypes
 from PIL import ImageTk
 
 import app_logs
+import app_version
 import config
 import hotkey_listener
 import i18n
@@ -44,7 +45,7 @@ def main() -> None:
     # Hidden tkinter root — keeps the process alive and owns dialog windows
     root = tk.Tk()
     root.withdraw()
-    root.title(i18n.t(cfg, "app_name"))
+    root.title(f"{i18n.t(cfg, 'app_name')} v{app_version.APP_VERSION}")
     try:
         icon_path = _icon_path()
         if os.path.exists(icon_path):
