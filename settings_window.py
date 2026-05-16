@@ -1465,8 +1465,8 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
 
     io_buttons = tk.Frame(tab_import_export)
     io_buttons.pack(fill="x", padx=10, pady=(2, 10))
-    tk.Button(io_buttons, text=_t("export_settings"), command=_export_settings_file, width=16).pack(side="left")
-    tk.Button(io_buttons, text=_t("import_settings"), command=_import_settings_file, width=16).pack(side="left", padx=8)
+    tk.Button(io_buttons, text=_t("export_settings"), command=_export_settings_file).pack(side="left")
+    tk.Button(io_buttons, text=_t("import_settings"), command=_import_settings_file).pack(side="left", padx=8)
 
     # ── Auth tab ─────────────────────────────────────────────────────────────
     tk.Label(

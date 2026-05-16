@@ -34,12 +34,12 @@ A Python-based Twitch clip downloader with hotkey support, featuring a system tr
    ```
 
 3. Configure your settings:
-   - Edit `config.json` with your Twitch API credentials and preferred broadcaster name
-   - Set your desired hotkey binding in the settings window
+   - Via UI
+   - Or manually edit `config.json` with your Twitch API credentials and preferred broadcaster name (not recommended)
 
 ## Usage
 
-### Starting the Application
+### Starting the Application from Source Code via Python
 
 ```bash
 python -m main
@@ -49,18 +49,22 @@ The application will launch with a system tray icon. Click the icon to open the 
 
 ### Hotkey Commands
 
-- **Primary Hotkey**: Download the current clip from the active Twitch stream
+- **Primary Hotkey**: Create a Clip on Twitch for the configurated duration (default 30s) and by default automatically download the clip (default **ctrl+shift+c**)
 
 ### Settings Window
 
 The settings window provides:
-- **Library Tab**: View and manage your downloaded clips
+- **Auth Tab**: Authenticate with Twitch using Application ID and secret
+- **Clip Tab**: Configure Clip related settings such as Broadcaster, Hotkey, Clip name and Download settings
+- **Notification Tab**: Configure Notification related settings, such as UI Language, Display on which to show the notification and position
+- **Clip Library Tab**: View and manage your downloaded clips
   - Delete clips and remove them from disk
   - Filter clips by status
 - **Twitch Clips Tab**: Browse clips from your followed channels
   - Download clips directly
   - Set custom broadcaster/game organization
 - **Session Log Tab**: View real-time logs of all operations
+- **Import / Export Tab**: Import / Export user configuration
 - **About Tab**: View app version, build date, and repository URL
 
 ## Release Process
@@ -77,8 +81,7 @@ What it does:
   - `major`: commit contains `BREAKING CHANGE` or `type!:`
   - `minor`: at least one `feat` commit
   - `patch`: all other commits
-- Writes a changelog entry to `CHANGELOG.md` with bump type and included commits
-- Generates release notes summary and publishes it with the GitHub Release
+- Generates release notes summary (bump type + included commits) and publishes it with the GitHub Release
 - Generates build metadata (`app_version.py`) and PyInstaller version resource
 - Builds `dist/TwitchClipper.exe`
 - Creates and pushes a git tag
@@ -88,9 +91,9 @@ Requirements:
 - GitHub CLI (`gh`) installed and authenticated
 - Clean working tree before running `release.bat`
 
-## Configuration
+## Manual Configuration (not recommended)
 
-Edit `config.json` to configure:
+Edit `config.json` manually to configure:
 
 ```json
 {

@@ -1,22 +1,65 @@
 import json
 import os
+import shutil
 import sys
 import threading
 from datetime import datetime
 
 _lock = threading.Lock()
 _listeners = set()
+_legacy_logs_migrated = False
+_legacy_logs_migration_note = ""
 
 
 def _base_dir() -> str:
+    if getattr(sys, "frozen", False):
+        local_appdata_root = os.getenv("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+        return os.path.join(local_appdata_root, "TwitchClipper")
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _legacy_base_dir() -> str:
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def _migrate_legacy_logs_if_needed(target_logs_dir: str) -> None:
+    global _legacy_logs_migrated, _legacy_logs_migration_note
+
+    # Dev/source runs keep existing behavior; migration applies only to frozen builds.
+    if not getattr(sys, "frozen", False):
+        return
+    if _legacy_logs_migrated:
+        return
+
+    legacy_logs_dir = os.path.join(_legacy_base_dir(), "logs")
+    if os.path.abspath(legacy_logs_dir) == os.path.abspath(target_logs_dir):
+        _legacy_logs_migrated = True
+        return
+
+    try:
+        os.makedirs(target_logs_dir, exist_ok=True)
+        migrated_files: list[str] = []
+        for filename in ("session_actions.log", "clip_library.jsonl"):
+            legacy_file = os.path.join(legacy_logs_dir, filename)
+            target_file = os.path.join(target_logs_dir, filename)
+            if os.path.exists(legacy_file) and not os.path.exists(target_file):
+                shutil.copy2(legacy_file, target_file)
+                migrated_files.append(filename)
+        if migrated_files:
+            _legacy_logs_migration_note = f"Legacy logs migrated from '{legacy_logs_dir}' to '{target_logs_dir}': {', '.join(migrated_files)}"
+    except OSError:
+        # Non-fatal: app continues and new logs are created in target directory.
+        pass
+    finally:
+        _legacy_logs_migrated = True
+
+
 def _logs_dir() -> str:
     path = os.path.join(_base_dir(), "logs")
     os.makedirs(path, exist_ok=True)
+    _migrate_legacy_logs_if_needed(path)
     return path
 
 
@@ -102,6 +145,8 @@ def start_session() -> None:
         with _lock:
             with open(action_log_path(), "w", encoding="utf-8") as f:
                 f.write(f"Session started: {_now_iso()}\n")
+                if _legacy_logs_migration_note:
+                    f.write(f"[{_now_iso()}] Migration | {_legacy_logs_migration_note}\n")
         _emit("session")
     except OSError:
         pass

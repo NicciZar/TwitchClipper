@@ -11,7 +11,6 @@ import sys
 REPO = "NicciZar/TwitchClipper"
 REPO_URL = "https://github.com/NicciZar/TwitchClipper"
 EXE_PATH = Path("dist") / "TwitchClipper.exe"
-CHANGELOG_PATH = Path("CHANGELOG.md")
 RELEASE_NOTES_PATH = Path("build") / "release_notes.md"
 SEMVER_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
@@ -101,36 +100,6 @@ def current_short_commit() -> str:
     return run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip() or "unknown"
 
 
-def write_changelog_entry(version: str, build_date: str, bump: str, commits: list[tuple[str, str]]) -> None:
-    CHANGELOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    existing = ""
-    if CHANGELOG_PATH.exists():
-        existing = CHANGELOG_PATH.read_text(encoding="utf-8")
-
-    header = "# Changelog\n\n"
-    if existing.startswith("# Changelog"):
-        body = existing[len("# Changelog"):].lstrip("\n")
-    else:
-        body = existing.lstrip("\n")
-
-    lines = [
-        f"## v{version} - {build_date}",
-        "",
-        f"- Bump type: {bump}",
-        f"- Repository: {REPO_URL}",
-        "",
-        "### Included commits",
-    ]
-
-    for short_sha, subject in commits:
-        lines.append(f"- {short_sha} {subject}")
-
-    lines.append("")
-    entry = "\n".join(lines)
-    new_text = header + entry + ("\n" + body if body else "")
-    CHANGELOG_PATH.write_text(new_text, encoding="utf-8")
-
-
 def write_release_notes(version: str, build_date: str, bump: str, commits: list[tuple[str, str]]) -> None:
     RELEASE_NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -196,7 +165,7 @@ def build_exe(version: str, build_date: str, commit_hash: str, python_runtime: s
 
 
 def maybe_commit_release_files(version: str) -> None:
-    run(["git", "add", "app_version.py", "CHANGELOG.md"])
+    run(["git", "add", "app_version.py"])
     diff = run(["git", "diff", "--cached", "--name-only"]).stdout.strip()
     if diff:
         run(["git", "commit", "-m", f"chore(release): v{version}"])
@@ -257,7 +226,6 @@ def main() -> int:
     build_date = now_utc()
     commit_hash = current_short_commit()
     python_runtime = f"Python {sys.version.split()[0]}"
-    write_changelog_entry(version_str, build_date, bump, commit_entries)
     write_release_notes(version_str, build_date, bump, commit_entries)
     generate_version_files(version_str, build_date, commit_hash, python_runtime)
     maybe_commit_release_files(version_str)

@@ -35,6 +35,11 @@ def main() -> None:
     _set_windows_app_id()
     app_logs.start_session()
     cfg = config.load()
+    if config.consume_legacy_config_migrated_flag():
+        app_logs.log_action("Migration", "Legacy config migrated to AppData path.")
+    clips_migration_note = config.consume_legacy_clips_migration_note()
+    if clips_migration_note:
+        app_logs.log_action("Migration", clips_migration_note)
     app_logs.log_action(i18n.t(cfg, "log_app_started"))
 
     # Ensure download folder exists
