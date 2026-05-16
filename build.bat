@@ -6,12 +6,22 @@ echo Building TwitchClipper...
 if "%APP_VERSION%"=="" set "APP_VERSION=0.0.0-dev"
 if "%APP_BUILD_DATE%"=="" set "APP_BUILD_DATE="
 if "%APP_REPO_URL%"=="" set "APP_REPO_URL=https://github.com/NicciZar/TwitchClipper"
+if "%APP_AUTHOR%"=="" set "APP_AUTHOR=NicciZar"
+if "%APP_LICENSE%"=="" set "APP_LICENSE=MIT"
+if "%APP_HOMEPAGE_URL%"=="" set "APP_HOMEPAGE_URL=https://github.com/NicciZar/TwitchClipper"
+if "%APP_ISSUES_URL%"=="" set "APP_ISSUES_URL=https://github.com/NicciZar/TwitchClipper/issues"
+if "%APP_BUILD_TYPE%"=="" set "APP_BUILD_TYPE=debug"
+if "%APP_PYTHON_RUNTIME%"=="" set "APP_PYTHON_RUNTIME="
+if "%APP_COMMIT_HASH%"=="" (
+	for /f %%I in ('git rev-parse --short HEAD 2^>nul') do set "APP_COMMIT_HASH=%%I"
+)
+if "%APP_COMMIT_HASH%"=="" set "APP_COMMIT_HASH=unknown"
 
 where py >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-	py -3 scripts\generate_version_files.py --version "%APP_VERSION%" --build-date "%APP_BUILD_DATE%" --repo-url "%APP_REPO_URL%" --out-version-py "app_version.py" --out-pyinstaller "build\version_info.txt"
+	py -3 scripts\generate_version_files.py --version "%APP_VERSION%" --build-date "%APP_BUILD_DATE%" --repo-url "%APP_REPO_URL%" --author "%APP_AUTHOR%" --license "%APP_LICENSE%" --homepage-url "%APP_HOMEPAGE_URL%" --issues-url "%APP_ISSUES_URL%" --commit-hash "%APP_COMMIT_HASH%" --build-type "%APP_BUILD_TYPE%" --python-runtime "%APP_PYTHON_RUNTIME%" --out-version-py "app_version.py" --out-pyinstaller "build\version_info.txt"
 ) else (
-	python scripts\generate_version_files.py --version "%APP_VERSION%" --build-date "%APP_BUILD_DATE%" --repo-url "%APP_REPO_URL%" --out-version-py "app_version.py" --out-pyinstaller "build\version_info.txt"
+	python scripts\generate_version_files.py --version "%APP_VERSION%" --build-date "%APP_BUILD_DATE%" --repo-url "%APP_REPO_URL%" --author "%APP_AUTHOR%" --license "%APP_LICENSE%" --homepage-url "%APP_HOMEPAGE_URL%" --issues-url "%APP_ISSUES_URL%" --commit-hash "%APP_COMMIT_HASH%" --build-type "%APP_BUILD_TYPE%" --python-runtime "%APP_PYTHON_RUNTIME%" --out-version-py "app_version.py" --out-pyinstaller "build\version_info.txt"
 )
 
 if %ERRORLEVEL% NEQ 0 (

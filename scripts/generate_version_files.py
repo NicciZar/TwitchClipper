@@ -4,8 +4,12 @@ import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 import re
+import sys
 
 DEFAULT_REPO_URL = "https://github.com/NicciZar/TwitchClipper"
+DEFAULT_ISSUES_URL = "https://github.com/NicciZar/TwitchClipper/issues"
+DEFAULT_AUTHOR = "NicciZar"
+DEFAULT_LICENSE = "MIT"
 
 
 def _normalize_semver(version: str) -> tuple[int, int, int, str]:
@@ -30,7 +34,23 @@ def _default_build_date() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _write_app_version_file(path: Path, version: str, build_date: str, repo_url: str) -> None:
+def _default_python_runtime() -> str:
+  return f"Python {sys.version.split()[0]}"
+
+
+def _write_app_version_file(
+  path: Path,
+  version: str,
+  build_date: str,
+  repo_url: str,
+  author: str,
+  license_name: str,
+  homepage_url: str,
+  issues_url: str,
+  commit_hash: str,
+  build_type: str,
+  python_runtime: str,
+) -> None:
     content = (
         '"""Application build metadata.\n'
         "This file can be updated automatically by release scripts.\"\"\"\n\n"
@@ -38,6 +58,13 @@ def _write_app_version_file(path: Path, version: str, build_date: str, repo_url:
         f'APP_VERSION = "{version}"\n'
         f'APP_BUILD_DATE = "{build_date}"\n'
         f'APP_REPO_URL = "{repo_url}"\n'
+    f'APP_AUTHOR = "{author}"\n'
+    f'APP_LICENSE = "{license_name}"\n'
+    f'APP_HOMEPAGE_URL = "{homepage_url}"\n'
+    f'APP_ISSUES_URL = "{issues_url}"\n'
+    f'APP_COMMIT_HASH = "{commit_hash}"\n'
+    f'APP_BUILD_TYPE = "{build_type}"\n'
+    f'APP_PYTHON_RUNTIME = "{python_runtime}"\n'
     )
     path.write_text(content, encoding="utf-8")
 
@@ -86,14 +113,36 @@ def main() -> int:
     parser.add_argument("--version", default="0.0.0-dev")
     parser.add_argument("--build-date", default="")
     parser.add_argument("--repo-url", default=DEFAULT_REPO_URL)
+    parser.add_argument("--author", default=DEFAULT_AUTHOR)
+    parser.add_argument("--license", default=DEFAULT_LICENSE)
+    parser.add_argument("--homepage-url", default=DEFAULT_REPO_URL)
+    parser.add_argument("--issues-url", default=DEFAULT_ISSUES_URL)
+    parser.add_argument("--commit-hash", default="unknown")
+    parser.add_argument("--build-type", default="debug")
+    parser.add_argument("--python-runtime", default=_default_python_runtime())
     parser.add_argument("--out-version-py", default="app_version.py")
     parser.add_argument("--out-pyinstaller", default="build/version_info.txt")
     args = parser.parse_args()
 
     major, minor, patch, display_version = _normalize_semver(args.version)
     build_date = args.build_date.strip() or _default_build_date()
+    python_runtime = str(args.python_runtime or "").strip() or _default_python_runtime()
+    build_type = str(args.build_type or "").strip().lower() or "debug"
+    commit_hash = str(args.commit_hash or "").strip() or "unknown"
 
-    _write_app_version_file(Path(args.out_version_py), display_version, build_date, args.repo_url)
+    _write_app_version_file(
+      Path(args.out_version_py),
+      display_version,
+      build_date,
+      args.repo_url,
+      args.author,
+      args.license,
+      args.homepage_url,
+      args.issues_url,
+      commit_hash,
+      build_type,
+      python_runtime,
+    )
     _write_pyinstaller_version_file(Path(args.out_pyinstaller), display_version, major, minor, patch)
     return 0
 

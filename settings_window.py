@@ -3,6 +3,7 @@ import sys
 import threading
 import json
 import time
+from datetime import datetime
 import tkinter as tk
 import tkinter.font as tkfont
 import webbrowser
@@ -169,30 +170,84 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
     tk.Label(tab_about, text=_t("about_build_date"), anchor="w", width=label_w).grid(
         row=2, column=0, sticky="w", **pad
     )
-    tk.Label(tab_about, text=app_version.APP_BUILD_DATE, anchor="w").grid(
+
+    def _format_build_date_local(raw_build_date: str) -> str:
+        raw = str(raw_build_date or "").strip()
+        if not raw:
+            return "unknown"
+        try:
+            # Build metadata is stored in UTC ISO format; render in local timezone for the user.
+            dt_utc = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            dt_local = dt_utc.astimezone()
+            return dt_local.strftime("%Y-%m-%d %H:%M:%S %Z (%z)")
+        except Exception:
+            return raw
+
+    tk.Label(tab_about, text=_format_build_date_local(app_version.APP_BUILD_DATE), anchor="w").grid(
         row=2, column=1, sticky="w", **pad
     )
 
     tk.Label(tab_about, text=_t("about_repository"), anchor="w", width=label_w).grid(
         row=3, column=0, sticky="w", **pad
     )
+    repo_url = getattr(app_version, "APP_REPO_URL", "https://github.com/NicciZar/TwitchClipper")
     repo_link = tk.Label(
         tab_about,
-        text=app_version.APP_REPO_URL,
+        text=repo_url,
         fg="#1a73e8",
         cursor="hand2",
         anchor="w",
     )
     repo_link.grid(row=3, column=1, sticky="w", **pad)
-    repo_link.bind("<Button-1>", lambda _e: webbrowser.open_new(app_version.APP_REPO_URL))
+    repo_link.bind("<Button-1>", lambda _e, url=repo_url: webbrowser.open_new(url))
 
-    def _copy_repo_url():
-        win.clipboard_clear()
-        win.clipboard_append(app_version.APP_REPO_URL)
-        messagebox.showinfo(_t("copied"), _t("copied_repo_url"), parent=win)
+    tk.Label(tab_about, text=_t("about_author"), anchor="w", width=label_w).grid(
+        row=4, column=0, sticky="w", **pad
+    )
+    tk.Label(tab_about, text=getattr(app_version, "APP_AUTHOR", "NicciZar"), anchor="w").grid(
+        row=4, column=1, sticky="w", **pad
+    )
 
-    tk.Button(tab_about, text=_t("copy"), command=_copy_repo_url, width=8).grid(
-        row=3, column=2, sticky="w", padx=4, pady=4
+    tk.Label(tab_about, text=_t("about_license"), anchor="w", width=label_w).grid(
+        row=5, column=0, sticky="w", **pad
+    )
+    tk.Label(tab_about, text=getattr(app_version, "APP_LICENSE", "MIT"), anchor="w").grid(
+        row=5, column=1, sticky="w", **pad
+    )
+
+    tk.Label(tab_about, text=_t("about_issues"), anchor="w", width=label_w).grid(
+        row=6, column=0, sticky="w", **pad
+    )
+    issues_url = getattr(app_version, "APP_ISSUES_URL", f"{repo_url}/issues")
+    issues_link = tk.Label(
+        tab_about,
+        text=issues_url,
+        fg="#1a73e8",
+        cursor="hand2",
+        anchor="w",
+    )
+    issues_link.grid(row=6, column=1, sticky="w", **pad)
+    issues_link.bind("<Button-1>", lambda _e, url=issues_url: webbrowser.open_new(url))
+
+    tk.Label(tab_about, text=_t("about_commit"), anchor="w", width=label_w).grid(
+        row=7, column=0, sticky="w", **pad
+    )
+    tk.Label(tab_about, text=getattr(app_version, "APP_COMMIT_HASH", "unknown"), anchor="w").grid(
+        row=7, column=1, sticky="w", **pad
+    )
+
+    tk.Label(tab_about, text=_t("about_build_type"), anchor="w", width=label_w).grid(
+        row=8, column=0, sticky="w", **pad
+    )
+    tk.Label(tab_about, text=getattr(app_version, "APP_BUILD_TYPE", "debug"), anchor="w").grid(
+        row=8, column=1, sticky="w", **pad
+    )
+
+    tk.Label(tab_about, text=_t("about_python_runtime"), anchor="w", width=label_w).grid(
+        row=9, column=0, sticky="w", **pad
+    )
+    tk.Label(tab_about, text=getattr(app_version, "APP_PYTHON_RUNTIME", "unknown"), anchor="w").grid(
+        row=9, column=1, sticky="w", **pad
     )
     tab_about.columnconfigure(1, weight=1)
 

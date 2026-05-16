@@ -97,6 +97,10 @@ def now_utc() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def current_short_commit() -> str:
+    return run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip() or "unknown"
+
+
 def write_changelog_entry(version: str, build_date: str, bump: str, commits: list[tuple[str, str]]) -> None:
     CHANGELOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     existing = ""
@@ -144,7 +148,7 @@ def write_release_notes(version: str, build_date: str, bump: str, commits: list[
     RELEASE_NOTES_PATH.write_text("\n".join(lines), encoding="utf-8")
 
 
-def generate_version_files(version: str, build_date: str) -> None:
+def generate_version_files(version: str, build_date: str, commit_hash: str, python_runtime: str) -> None:
     cmd = [
         sys.executable,
         "scripts/generate_version_files.py",
@@ -154,6 +158,20 @@ def generate_version_files(version: str, build_date: str) -> None:
         build_date,
         "--repo-url",
         REPO_URL,
+        "--author",
+        "NicciZar",
+        "--license",
+        "MIT",
+        "--homepage-url",
+        REPO_URL,
+        "--issues-url",
+        f"{REPO_URL}/issues",
+        "--commit-hash",
+        commit_hash,
+        "--build-type",
+        "release",
+        "--python-runtime",
+        python_runtime,
         "--out-version-py",
         "app_version.py",
         "--out-pyinstaller",
@@ -162,11 +180,18 @@ def generate_version_files(version: str, build_date: str) -> None:
     run(cmd)
 
 
-def build_exe(version: str, build_date: str) -> None:
+def build_exe(version: str, build_date: str, commit_hash: str, python_runtime: str) -> None:
     env = dict(**os.environ)
     env["APP_VERSION"] = version
     env["APP_BUILD_DATE"] = build_date
     env["APP_REPO_URL"] = REPO_URL
+    env["APP_HOMEPAGE_URL"] = REPO_URL
+    env["APP_ISSUES_URL"] = f"{REPO_URL}/issues"
+    env["APP_AUTHOR"] = "NicciZar"
+    env["APP_LICENSE"] = "MIT"
+    env["APP_BUILD_TYPE"] = "release"
+    env["APP_COMMIT_HASH"] = commit_hash
+    env["APP_PYTHON_RUNTIME"] = python_runtime
     subprocess.run(["cmd", "/c", "build.bat"], check=True, text=True, env=env)
 
 
@@ -230,11 +255,13 @@ def main() -> int:
         raise RuntimeError("Working tree is not clean. Commit or stash changes before release.")
 
     build_date = now_utc()
+    commit_hash = current_short_commit()
+    python_runtime = f"Python {sys.version.split()[0]}"
     write_changelog_entry(version_str, build_date, bump, commit_entries)
     write_release_notes(version_str, build_date, bump, commit_entries)
-    generate_version_files(version_str, build_date)
+    generate_version_files(version_str, build_date, commit_hash, python_runtime)
     maybe_commit_release_files(version_str)
-    build_exe(version_str, build_date)
+    build_exe(version_str, build_date, commit_hash, python_runtime)
 
     if not EXE_PATH.exists():
         raise RuntimeError(f"Build succeeded but executable was not found at '{EXE_PATH}'.")
