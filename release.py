@@ -19,6 +19,14 @@ def run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, check=check, text=True, capture_output=True)
 
 
+def run_stream(cmd: list[str], step: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    print(f"[release] {step}")
+    completed = subprocess.run(cmd, check=False, text=True)
+    if check and completed.returncode != 0:
+        raise subprocess.CalledProcessError(completed.returncode, cmd)
+    return completed
+
+
 def ensure_tool_available(tool: str) -> None:
     probe = run([tool, "--version"], check=False)
     if probe.returncode != 0:
@@ -118,6 +126,7 @@ def write_release_notes(version: str, build_date: str, bump: str, commits: list[
 
 
 def generate_version_files(version: str, build_date: str, commit_hash: str, python_runtime: str) -> None:
+    print(f"[release] Generating version metadata for v{version} ({build_date})")
     cmd = [
         sys.executable,
         "scripts/generate_version_files.py",
@@ -150,6 +159,7 @@ def generate_version_files(version: str, build_date: str, commit_hash: str, pyth
 
 
 def build_exe(version: str, build_date: str, commit_hash: str, python_runtime: str) -> None:
+    print(f"[release] Building executable for v{version}")
     env = dict(**os.environ)
     env["APP_VERSION"] = version
     env["APP_BUILD_DATE"] = build_date
@@ -165,22 +175,25 @@ def build_exe(version: str, build_date: str, commit_hash: str, python_runtime: s
 
 
 def maybe_commit_release_files(version: str) -> None:
+    print("[release] Checking if release metadata needs a commit")
     run(["git", "add", "app_version.py"])
     diff = run(["git", "diff", "--cached", "--name-only"]).stdout.strip()
     if diff:
-        run(["git", "commit", "-m", f"chore(release): v{version}"])
+        run_stream(["git", "commit", "-m", f"chore(release): v{version}"], "Committing updated app_version.py")
+    else:
+        print("[release] No metadata changes to commit")
 
 
 def create_and_push_tag(version: str) -> None:
     tag = f"v{version}"
-    run(["git", "tag", tag])
-    run(["git", "push"])
-    run(["git", "push", "origin", tag])
+    run_stream(["git", "tag", tag], f"Creating tag {tag}")
+    run_stream(["git", "push"], "Pushing branch commits")
+    run_stream(["git", "push", "origin", tag], f"Pushing tag {tag}")
 
 
 def create_github_release(version: str) -> None:
     tag = f"v{version}"
-    run(
+    run_stream(
         [
             "gh",
             "release",
@@ -193,7 +206,8 @@ def create_github_release(version: str) -> None:
             tag,
             "--notes-file",
             str(RELEASE_NOTES_PATH),
-        ]
+        ],
+        f"Creating GitHub Release {tag} and uploading {EXE_PATH}",
     )
 
 
@@ -204,6 +218,7 @@ def main() -> int:
 
     ensure_tool_available("git")
     ensure_tool_available("gh")
+    print("[release] Tools OK: git, gh")
 
     last = latest_semver_tag() or (0, 0, 0)
     previous_tag = None if last == (0, 0, 0) else last
@@ -215,6 +230,9 @@ def main() -> int:
 
     next_version = bump_version(last, bump)
     version_str = f"{next_version[0]}.{next_version[1]}.{next_version[2]}"
+    print(f"[release] Bump type: {bump}")
+    print(f"[release] Next version: v{version_str}")
+    print(f"[release] Commits since last tag: {len(commit_entries)}")
 
     if args.dry_run:
         print(version_str)
@@ -226,7 +244,10 @@ def main() -> int:
     build_date = now_utc()
     commit_hash = current_short_commit()
     python_runtime = f"Python {sys.version.split()[0]}"
+    print(f"[release] Commit hash: {commit_hash}")
+    print(f"[release] Python runtime: {python_runtime}")
     write_release_notes(version_str, build_date, bump, commit_entries)
+    print(f"[release] Release notes written: {RELEASE_NOTES_PATH}")
     generate_version_files(version_str, build_date, commit_hash, python_runtime)
     maybe_commit_release_files(version_str)
     build_exe(version_str, build_date, commit_hash, python_runtime)
