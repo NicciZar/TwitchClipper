@@ -11,6 +11,7 @@ DEFAULTS = {
     "client_secret": "",
     "access_token": "",
     "refresh_token": "",
+    "token_expires_at": 0,
     "clip_duration": 30,
     "clip_title_template": "{datetime}_{game}-{title}",
     "download_folder": "",

@@ -1,6 +1,7 @@
 import os
 import re
 import threading
+import time
 
 import keyboard
 
@@ -49,6 +50,8 @@ def _api_call_with_refresh(cfg: dict, fn, *args, **kwargs):
                 cfg["access_token"] = new_tokens["access_token"]
                 if new_tokens.get("refresh_token"):
                     cfg["refresh_token"] = new_tokens["refresh_token"]
+                expires_in = int(new_tokens.get("expires_in", 0) or 0)
+                cfg["token_expires_at"] = int(time.time()) + expires_in if expires_in > 0 else 0
                 config.save(cfg)
                 app_logs.log_action(i18n.t(cfg, "log_access_token_refreshed"))
                 return fn(*args, **kwargs)
@@ -74,6 +77,8 @@ def try_refresh_token(cfg: dict) -> bool:
         cfg["access_token"] = new_tokens["access_token"]
         if new_tokens.get("refresh_token"):
             cfg["refresh_token"] = new_tokens["refresh_token"]
+        expires_in = int(new_tokens.get("expires_in", 0) or 0)
+        cfg["token_expires_at"] = int(time.time()) + expires_in if expires_in > 0 else 0
         config.save(cfg)
         app_logs.log_action(i18n.t(cfg, "log_access_token_refreshed"))
         return True
@@ -255,10 +260,6 @@ def rename_library_entry_on_twitch(entry: dict, new_title: str) -> tuple[bool, s
     clip_id = str(entry.get("clip_id", "")).strip()
     if not clip_id:
         return False, "Missing clip_id."
-
-    new_title = str(new_title).strip()
-    if not new_title:
-        return False, "Clip title cannot be empty."
 
     try:
         import webbrowser

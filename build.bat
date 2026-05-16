@@ -18,12 +18,10 @@ if %ERRORLEVEL% NEQ 0 (
 	echo.
 	echo Build failed.
 	echo Install PyInstaller with: py -m pip install pyinstaller
-	pause
 	exit /b 1
 )
 
 echo.
 echo Done. Executable is in the dist\ folder.
-pause
 
 endlocal

@@ -2,6 +2,7 @@ import os
 import sys
 import threading
 import json
+import time
 import tkinter as tk
 import tkinter.font as tkfont
 import webbrowser
@@ -141,10 +142,10 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
     notebook.add(tab_auth, text=f"  {_t('tab_auth')}  ")
     notebook.add(tab_clip, text=f"  {_t('tab_clip')}  ")
     notebook.add(tab_notify, text=f"  {_t('tab_notify')}  ")
-    notebook.add(tab_import_export, text=f"  {_t('tab_import_export')}  ")
-    notebook.add(tab_session_log, text=f"  {_t('tab_session_log')}  ")
     notebook.add(tab_library, text=f"  {_t('tab_clip_library')}  ")
     notebook.add(tab_twitch_clips, text=f"  {_t('tab_twitch_clips')}  ")
+    notebook.add(tab_session_log, text=f"  {_t('tab_session_log')}  ")
+    notebook.add(tab_import_export, text=f"  {_t('tab_import_export')}  ")
 
     # ── Notifications tab ───────────────────────────────────────────────────
     tk.Label(
@@ -1003,8 +1004,36 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
 
         def _worker():
             try:
-                # Fetch all clips from Twitch
-                all_twitch_clips = twitch_api.get_broadcaster_clips(broadcaster_id, token, client_id)
+                # Fetch all clips from Twitch, refreshing token once on 401.
+                token_in_use = token
+                try:
+                    all_twitch_clips = twitch_api.get_broadcaster_clips(broadcaster_id, token_in_use, client_id)
+                except PermissionError as exc:
+                    is_unauthorized = "401" in str(exc)
+                    client_secret = str(cfg.get("client_secret", "")).strip()
+                    refresh_token = str(cfg.get("refresh_token", "")).strip()
+                    if not (is_unauthorized and client_secret and refresh_token):
+                        raise
+
+                    try:
+                        new_tokens = twitch_api.refresh_access_token(client_id, client_secret, refresh_token)
+                    except Exception as refresh_exc:
+                        raise PermissionError(f"Token refresh failed: {refresh_exc}") from refresh_exc
+
+                    token_in_use = str(new_tokens.get("access_token", "")).strip()
+                    if not token_in_use:
+                        raise PermissionError("Token refresh failed: empty access token returned.")
+
+                    cfg["access_token"] = token_in_use
+                    if new_tokens.get("refresh_token"):
+                        cfg["refresh_token"] = str(new_tokens.get("refresh_token", "")).strip()
+                    expires_in = int(new_tokens.get("expires_in", 0) or 0)
+                    cfg["token_expires_at"] = int(time.time()) + expires_in if expires_in > 0 else 0
+                    config.save(cfg)
+                    app_logs.log_action(_t("log_access_token_refreshed"))
+
+                    # Retry once with fresh token.
+                    all_twitch_clips = twitch_api.get_broadcaster_clips(broadcaster_id, token_in_use, client_id)
                 
                 # Get local library clips to filter
                 local_library_clip_ids = set()
@@ -1077,15 +1106,19 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
                 win.after(0, _update_ui)
 
             except Exception as exc:
-                def _error_ui():
-                    messagebox.showerror(_t("error_title"), _t("fetch_clips_failed", error=exc), parent=win)
+                # Exception variables are cleared after the except block in Python 3,
+                # so capture the message before scheduling the deferred UI callback.
+                err_text = str(exc)
+
+                def _error_ui(error_text=err_text):
+                    messagebox.showerror(_t("error_title"), _t("fetch_clips_failed", error=error_text), parent=win)
                     var_twitch_progress.set("")
                     var_twitch_progress_value.set(0)
                     twitch_item_data.clear()
                     twitch_item_by_clip_id.clear()
                     for item in twitch_tree.get_children():
                         twitch_tree.delete(item)
-                    app_logs.log_error(_t("tab_twitch_clips"), str(exc))
+                    app_logs.log_error(_t("tab_twitch_clips"), error_text)
 
                 win.after(0, _error_ui)
 
@@ -1171,13 +1204,14 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
         return 0
 
     def _build_form_settings_dict() -> dict:
+        parsed_duration = _parse_duration_or_none()
         return {
             "client_id": var_client_id.get().strip(),
             "client_secret": var_client_secret.get().strip(),
             "access_token": var_token.get().strip(),
             "broadcaster_name": var_broadcaster.get().strip(),
             "hotkey": var_hotkey.get().strip(),
-            "clip_duration": var_duration.get(),
+            "clip_duration": parsed_duration if parsed_duration is not None else int(cfg.get("clip_duration", 30)),
             "clip_title_template": var_template.get().strip() or "{datetime}_{game}-{title}",
             "download_folder": var_folder.get().strip(),
             "auto_download": bool(var_auto_download.get()),
@@ -1367,6 +1401,49 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
     var_client_secret = tk.StringVar(value=cfg.get("client_secret", ""))
     var_token = tk.StringVar(value=cfg.get("access_token", ""))
     auth_status = tk.StringVar(value="")
+    auth_expiry_status = tk.StringVar(value="")
+
+    def _format_duration(seconds: int) -> str:
+        seconds = max(0, int(seconds))
+        days, rem = divmod(seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, _ = divmod(rem, 60)
+        if days > 0:
+            return f"{days}d {hours}h"
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+
+    def _format_local_timestamp(epoch_seconds: int) -> str:
+        try:
+            return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(epoch_seconds)))
+        except Exception:
+            return "?"
+
+    def _set_token_expiry_from_expires_in(expires_in: int | str | None) -> None:
+        try:
+            expires = int(expires_in or 0)
+        except Exception:
+            expires = 0
+        cfg["token_expires_at"] = int(time.time()) + expires if expires > 0 else 0
+
+    def _update_auth_expiry_label() -> None:
+        expires_at = int(cfg.get("token_expires_at", 0) or 0)
+        if not expires_at:
+            auth_expiry_status.set(_t("token_expiry_unknown"))
+            return
+        now = int(time.time())
+        if expires_at <= now:
+            auth_expiry_status.set(_t("token_expired_at", when=_format_local_timestamp(expires_at)))
+            return
+        remaining = expires_at - now
+        auth_expiry_status.set(
+            _t(
+                "token_expires_at",
+                when=_format_local_timestamp(expires_at),
+                remaining=_format_duration(remaining),
+            )
+        )
 
     login_flow_frame = tk.Frame(tab_auth)
     login_flow_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
@@ -1375,12 +1452,17 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
     tk.Label(logged_in_frame, textvariable=auth_status, fg="green", anchor="w").grid(
         row=0, column=0, sticky="w", **pad
     )
+    tk.Label(logged_in_frame, textvariable=auth_expiry_status, fg="gray", anchor="w").grid(
+        row=1, column=0, sticky="w", **pad
+    )
 
     def _logout():
         var_token.set("")
         cfg["access_token"] = ""
         cfg["refresh_token"] = ""
+        cfg["token_expires_at"] = 0
         auth_status.set(_t("not_logged_in"))
+        _update_auth_expiry_label()
         logged_in_frame.grid_remove()
         login_flow_frame.grid()
         try:
@@ -1390,8 +1472,69 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
             app_logs.log_error(_t("log_logged_out"), str(exc))
         app_logs.log_action(_t("log_logged_out"))
 
+    def _check_token_status():
+        token = str(cfg.get("access_token", "")).strip()
+        client_id = var_client_id.get().strip() or str(cfg.get("client_id", "")).strip()
+        if not token or not client_id:
+            messagebox.showerror(_t("missing"), _t("missing_id_token"), parent=win)
+            return
+        try:
+            info = auth.validate_manual_token(token, client_id)
+            _set_token_expiry_from_expires_in(info.get("expires_in", 0))
+            _update_auth_expiry_label()
+            config.save(cfg)
+            messagebox.showinfo(_t("success"), _t("token_status_updated"), parent=win)
+        except Exception as exc:
+            messagebox.showerror(_t("invalid_token"), str(exc), parent=win)
+
+    def _refresh_token_manual():
+        client_id = var_client_id.get().strip() or str(cfg.get("client_id", "")).strip()
+        client_secret = var_client_secret.get().strip() or str(cfg.get("client_secret", "")).strip()
+        refresh_token = str(cfg.get("refresh_token", "")).strip()
+
+        if not refresh_token:
+            messagebox.showerror(_t("invalid_token"), _t("missing_refresh_token"), parent=win)
+            return
+        if not client_id or not client_secret:
+            messagebox.showerror(_t("missing"), _t("missing_id_secret"), parent=win)
+            return
+
+        try:
+            new_tokens = twitch_api.refresh_access_token(client_id, client_secret, refresh_token)
+            new_access_token = str(new_tokens.get("access_token", "")).strip()
+            if not new_access_token:
+                raise RuntimeError(_t("token_refresh_empty_access"))
+
+            cfg["access_token"] = new_access_token
+            if new_tokens.get("refresh_token"):
+                cfg["refresh_token"] = str(new_tokens.get("refresh_token", "")).strip()
+            _set_token_expiry_from_expires_in(new_tokens.get("expires_in", 0))
+            var_token.set(new_access_token)
+
+            try:
+                info = auth.validate_manual_token(new_access_token, client_id)
+                auth_status.set(_t("logged_in_as", user=info.get("login", "?")))
+            except Exception:
+                auth_status.set(_t("logged_in"))
+
+            _update_auth_expiry_label()
+            config.save(cfg)
+            app_logs.log_action(_t("log_access_token_refreshed"))
+            messagebox.showinfo(_t("success"), _t("token_refreshed_success"), parent=win)
+        except Exception as exc:
+            messagebox.showerror(_t("invalid_token"), _t("token_refresh_failed", error=exc), parent=win)
+            app_logs.log_error(_t("log_token_refresh"), str(exc))
+
+    tk.Button(logged_in_frame, text=_t("check_token_status"), command=_check_token_status, width=18).grid(
+        row=2, column=0, sticky="w", padx=10, pady=(0, 4)
+    )
+
+    tk.Button(logged_in_frame, text=_t("refresh_token_now"), command=_refresh_token_manual, width=18).grid(
+        row=3, column=0, sticky="w", padx=10, pady=(0, 4)
+    )
+
     tk.Button(logged_in_frame, text=_t("logout"), command=_logout, width=12).grid(
-        row=1, column=0, sticky="w", padx=10, pady=4
+        row=4, column=0, sticky="w", padx=10, pady=4
     )
 
     _row(login_flow_frame, _t("client_id"), lambda p: tk.Entry(p, textvariable=var_client_id, width=40), 0)
@@ -1409,7 +1552,9 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
             var_token.set(tokens["access_token"])
             cfg["access_token"] = tokens["access_token"]
             cfg["refresh_token"] = tokens.get("refresh_token", "")
+            _set_token_expiry_from_expires_in(tokens.get("expires_in", 0))
             auth_status.set(_t("logged_in"))
+            _update_auth_expiry_label()
             login_flow_frame.grid_remove()
             logged_in_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
             try:
@@ -1441,7 +1586,9 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
         try:
             info = auth.validate_manual_token(tok, cid)
             cfg["access_token"] = tok
+            _set_token_expiry_from_expires_in(info.get("expires_in", 0))
             auth_status.set(_t("logged_in_as", user=info.get("login", "?")))
+            _update_auth_expiry_label()
             login_flow_frame.grid_remove()
             logged_in_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
             try:
@@ -1459,9 +1606,12 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
                         var_token.set(cfg.get("access_token", ""))
                         try:
                             info = auth.validate_manual_token(cfg["access_token"], cid)
+                            _set_token_expiry_from_expires_in(info.get("expires_in", 0))
                             auth_status.set(_t("logged_in_as", user=info.get("login", "?")))
+                            _update_auth_expiry_label()
                             login_flow_frame.grid_remove()
                             logged_in_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
+                            config.save(cfg)
                             messagebox.showinfo(_t("success"), _t("token_refreshed_success"), parent=win)
                             app_logs.log_action(_t("log_logged_in"), _t("log_logged_in_manual", user=info.get('login', '?')))
                             return
@@ -1489,6 +1639,7 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
 
     if var_token.get().strip():
         auth_status.set(_t("logged_in"))
+        _update_auth_expiry_label()
         login_flow_frame.grid_remove()
         logged_in_frame.grid(row=2, column=0, columnspan=3, sticky="ew")
     tab_auth.columnconfigure(1, weight=1)
@@ -1496,10 +1647,24 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
     # ── Clip tab ──────────────────────────────────────────────────────────────
     var_broadcaster = tk.StringVar(value=cfg.get("broadcaster_name", ""))
     var_hotkey = tk.StringVar(value=cfg.get("hotkey", "ctrl+shift+c"))
-    var_duration = tk.IntVar(value=int(cfg.get("clip_duration", 30)))
+    try:
+        _initial_duration = int(cfg.get("clip_duration", 30))
+    except Exception:
+        _initial_duration = 30
+    var_duration = tk.StringVar(value=str(_initial_duration))
     var_template = tk.StringVar(value=cfg.get("clip_title_template", "{datetime}_{game}-{title}"))
     var_folder = tk.StringVar(value=cfg.get("download_folder", ""))
     var_auto_download = tk.BooleanVar(value=bool(cfg.get("auto_download", True)))
+
+    def _parse_duration_or_none() -> int | None:
+        raw = str(var_duration.get()).strip()
+        if not raw or not raw.isdigit():
+            return None
+        return int(raw)
+
+    def _validate_duration_input(proposed: str) -> bool:
+        # Allow only digits while typing; final range is validated on save.
+        return proposed == "" or proposed.isdigit()
 
     _row(tab_clip, _t("broadcaster_name"), lambda p: tk.Entry(p, textvariable=var_broadcaster, width=30), 0)
 
@@ -1609,7 +1774,16 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
 
     # Duration
     dur_frame = tk.Frame(tab_clip)
-    tk.Spinbox(dur_frame, from_=5, to=60, textvariable=var_duration, width=5).pack(side="left")
+    _dur_validate_cmd = (win.register(_validate_duration_input), "%P")
+    tk.Spinbox(
+        dur_frame,
+        from_=5,
+        to=60,
+        textvariable=var_duration,
+        width=5,
+        validate="key",
+        validatecommand=_dur_validate_cmd,
+    ).pack(side="left")
     tk.Label(dur_frame, text=_t("duration_hint")).pack(side="left", padx=4)
     dur_frame.grid(row=3, column=1, sticky="w", **{"padx": 10, "pady": 4})
     tk.Label(tab_clip, text=_t("clip_duration"), anchor="w", width=label_w).grid(
@@ -1645,8 +1819,8 @@ def _build(root: tk.Tk, on_saved, on_exit_app) -> tk.Toplevel:
 
     # ── Save button ───────────────────────────────────────────────────────────
     def _save():
-        dur = var_duration.get()
-        if not (5 <= dur <= 60):
+        dur = _parse_duration_or_none()
+        if dur is None or not (5 <= dur <= 60):
             messagebox.showerror(_t("invalid"), _t("invalid_duration"), parent=win)
             return
         old_cfg = dict(cfg)

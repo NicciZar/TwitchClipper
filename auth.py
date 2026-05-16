@@ -107,6 +107,7 @@ def _exchange_code(code: str, client_id: str, client_secret: str) -> dict:
     return {
         "access_token": body["access_token"],
         "refresh_token": body.get("refresh_token", ""),
+        "expires_in": int(body.get("expires_in", 0) or 0),
     }
 
 
